@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE))                          # for john_doe
 sys.path.insert(0, str(REPO_ROOT / "tournament"))      # for connect4.policy
 
 from john_doe import JohnDoe, ROWS, COLS  # noqa: E402
+from john_doe_v2 import JohnDoeV2          # noqa: E402
 
 
 class RandomPolicy:
@@ -66,36 +67,36 @@ def play_one_game(first, second) -> int:
     return 0  # board full, no winner
 
 
-def evaluate(n_games: int = 500, seed: int = 0) -> None:
+def evaluate_one(agent_factory, label: str, n_games: int, seed: int) -> None:
+    """Play `agent_factory()` vs RandomPolicy for n_games, half as each color.
+    `agent_factory` is a zero-arg callable that returns a fresh agent — we
+    construct a new one per game to mirror the tournament harness."""
     rng = np.random.default_rng(seed)
-
-    # Tally John Doe's results split by the color it played.
     stats = {
         "as_red":    {"wins": 0, "losses": 0, "draws": 0},
         "as_yellow": {"wins": 0, "losses": 0, "draws": 0},
     }
 
     for _ in range(n_games):
-        # Flip a fair coin: John Doe goes first (Red) or second (Yellow).
-        john_is_red = rng.random() < 0.5
-        if john_is_red:
-            first, second = JohnDoe(), RandomPolicy()
-            john_color = -1
+        agent_is_red = rng.random() < 0.5
+        if agent_is_red:
+            first, second = agent_factory(), RandomPolicy()
+            agent_color = -1
             bucket = stats["as_red"]
         else:
-            first, second = RandomPolicy(), JohnDoe()
-            john_color = +1
+            first, second = RandomPolicy(), agent_factory()
+            agent_color = +1
             bucket = stats["as_yellow"]
 
         winner = play_one_game(first, second)
         if winner == 0:
             bucket["draws"] += 1
-        elif winner == john_color:
+        elif winner == agent_color:
             bucket["wins"] += 1
         else:
             bucket["losses"] += 1
 
-    print(f"JohnDoe vs Random  —  {n_games} games\n")
+    print(f"\n{label} vs Random  —  {n_games} games")
     print(f"{'color':<12}{'wins':>6}{'losses':>8}{'draws':>7}{'win%':>8}")
     print("-" * 41)
     for color, b in stats.items():
@@ -105,4 +106,6 @@ def evaluate(n_games: int = 500, seed: int = 0) -> None:
 
 
 if __name__ == "__main__":
-    evaluate(n_games=500)
+    evaluate_one(JohnDoe,                    "JohnDoe v1 (1-ply)", n_games=2000, seed=0)
+    evaluate_one(lambda: JohnDoeV2(depth=3), "JohnDoe v2 (3-ply)", n_games=2000, seed=1)
+    evaluate_one(lambda: JohnDoeV2(depth=5), "JohnDoe v2 (5-ply)", n_games=100,  seed=2)
