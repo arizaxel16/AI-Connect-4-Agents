@@ -14,14 +14,13 @@ Idea central:
   juega aleatoriamente hasta el final (rollout) y propaga el resultado
   hacia la raíz. La acción final es la columna con más visitas.
 
-Autor: [Tu nombre]
 """
 
 # ── Dependencias ──────────────────────────────────────────────────────────────
 import math
 import numpy as np
-from tournament.connect4.policy import Policy
-from tournament.connect4.connect_state import ConnectState
+from policy import Policy
+from connect_state import ConnectState
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
