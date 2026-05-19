@@ -16,7 +16,7 @@ API del torneo:
 """
 
 import numpy as np
-from connect4.policy import Policy
+from policy import Policy
 
 
 class GreedyAgent(Policy):
@@ -31,7 +31,7 @@ class GreedyAgent(Policy):
 
     COL_SCORE = [0, 1, 2, 3, 2, 1, 0]
 
-    def mount(self) -> None:
+    def mount(self, *args, **kwargs) -> None:
         pass
 
     def act(self, s: np.ndarray) -> int:
