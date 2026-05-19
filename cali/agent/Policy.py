@@ -1,308 +1,187 @@
 import math
 import numpy as np
-from connect4.policy import Policy
-from connect4.connect_state import ConnectState
+from abc import ABC, abstractmethod
+
+try:
+    from connect4.policy import Policy
+except ImportError:
+    try:
+        from policy import Policy
+    except ImportError:
+        class Policy(ABC):
+            @abstractmethod
+            def mount(self, *args, **kwargs) -> None:
+                pass
+            @abstractmethod
+            def act(self, s) -> int:
+                pass
+
+try:
+    from connect4.connect_state import ConnectState
+except ImportError:
+    from connect_state import ConnectState
 
 
+# ── MCTSNode ──────────────────────────────────────────────────────────────────
 
 class MCTSNode:
-    """
-    Representa un nodo en el árbol MCTS.
-
-    Cada nodo almacena:
-      - El estado del tablero (ConnectState) en ese punto del juego.
-      - Estadísticas de visitas (N) y victorias (W) para guiar la búsqueda.
-      - Punteros al padre y a los hijos ya explorados.
-      - La lista de acciones todavía no exploradas desde este nodo.
-    """
-
-    def __init__(self, state: ConnectState, parent=None, action: int = None):
-        """
-        Parámetros
-        ----------
-        state  : ConnectState — tablero y jugador activo en este nodo
-        parent : MCTSNode     — nodo padre (None si es la raíz)
-        action : int          — columna jugada para llegar a este nodo
-        """
-        # Estado del juego asociado a este nodo
-        self.state = state
-
-        # Estructura del árbol
-        self.parent = parent          # Nodo del que venimos
-        self.action = action          # Acción que nos trajo aquí
-
-        # ── Estadísticas MCTS ────────────────────────────────────────────────
-        # N: número de veces que este nodo fue visitado
+    def __init__(self, state, parent=None, action=None):
+        self.state  = state
+        self.parent = parent
+        self.action = action
         self.N = 0
-        # W: número de victorias del jugador que ELIGIÓ este nodo
-        #    (es decir, del jugador que estaba activo en el padre).
-        #    Esto es lo que define el UCB clásico para juegos de suma cero.
         self.W = 0
+        self.children = {}
 
-        # ── Hijos y acciones pendientes ──────────────────────────────────────
-        self.children = {}  # {accion (int): MCTSNode}
-
-        # Acciones todavía no expandidas en este nodo.
-        # Si el estado es terminal, la lista está vacía.
         if state.is_final():
             self.untried_actions = []
         else:
-            # Mezclamos aleatoriamente para diversificar el orden de expansión
             free = state.get_free_cols()
             self.untried_actions = free[:]
             np.random.shuffle(self.untried_actions)
 
-    # ── Propiedades de conveniencia ──────────────────────────────────────────
-
     @property
-    def is_fully_expanded(self) -> bool:
-        """True cuando todas las acciones posibles ya tienen hijo en el árbol."""
+    def is_fully_expanded(self):
         return len(self.untried_actions) == 0
 
     @property
-    def is_terminal(self) -> bool:
-        """True cuando el estado de juego es final (victoria o empate)."""
+    def is_terminal(self):
         return self.state.is_final()
 
-    def ucb_score(self, C: float) -> float:
-        """
-        Calcula el puntaje UCB (Upper Confidence Bound) de este nodo,
-        visto desde la perspectiva de su padre.
+    def ucb_score(self, C):
+        # UCB = W/N + C·√(ln(N_padre)/N_hijo)  — Slides 12, diap. 22
+        return (self.W / self.N) + C * math.sqrt(math.log(self.parent.N) / self.N)
 
-        Fórmula (Slides 12, diapositiva 22):
-            UCB(s,a) = W/N  +  C · √(ln(N_padre) / N_hijo)
 
-        El primer término (explotación) favorece nodos con alta tasa de victoria.
-        El segundo término (exploración) favorece nodos poco visitados.
-        """
-        exploitation = self.W / self.N
-        exploration  = C * math.sqrt(math.log(self.parent.N) / self.N)
-        return exploitation + exploration
-
+# ── MCTSAgent ─────────────────────────────────────────────────────────────────
 
 class MCTSAgent(Policy):
-    """
-    Agente Connect-4 que implementa el algoritmo MCTS completo.
 
-    Parámetros configurables
-    ------------------------
-    n_simulations : int   — presupuesto de simulaciones por turno
-                            (más simulaciones = mejor juego, más tiempo)
-    C             : float — constante de exploración UCB
-                            (mayor C = más exploración, menor C = más explotación)
-
-    Flujo de act():
-      1. Componer el estado ConnectState desde el tablero recibido.
-      2. Verificar jugadas tácticas inmediatas (ganar o bloquear).
-      3. Ejecutar N simulaciones MCTS:
-           SELECCIÓN → EXPANSIÓN → SIMULACIÓN → PROPAGACIÓN
-      4. Retornar la columna del hijo con más visitas (política robusta).
-    """
-
-    def __init__(self, n_simulations: int = 500, C: float = 1.41):
-        """
-        n_simulations : presupuesto de simulaciones por turno.
-        C             : constante de exploración UCB (√2 ≈ 1.41 es el valor teórico).
-        """
+    def __init__(self, n_simulations=500, C=1.41):
         self.n_simulations = n_simulations
         self.C = C
 
-    # ── Método obligatorio de Policy ────────────────────────────────────────
-
-    def mount(self) -> None:
+    def mount(self, *args, **kwargs) -> None:
         """
-        Llamado por el torneo antes de cada partida.
-        MCTS no requiere entrenamiento offline, así que no hay nada que inicializar.
-        (Ver Slides 13: el razonamiento ocurre completamente en línea, turno a turno.)
+        Acepta el argumento de timeout que envía Gradescope (*args).
+        MCTS no necesita inicialización — razona completamente en línea.
         """
-        pass  # MCTS es 100 % online: no hay fase de entrenamiento.
+        pass
 
-    # ── Método principal ─────────────────────────────────────────────────────
+    def act(self, board) -> int:
+        board  = np.array(board, dtype=int)
+        player = self._infer_player(board)
+        state  = ConnectState(board, player)
 
-    def act(self, board: np.ndarray) -> int:
-        """
-        Decide qué columna jugar dado el tablero actual.
+        # ── GUARDIA 1: sin columnas libres → no hay jugada posible ───────────
+        free_cols = state.get_free_cols()
+        if not free_cols:
+            return 0  # no debería ocurrir en una partida válida
 
-        Parámetros
-        ----------
-        board : np.ndarray de shape (6, 7)
-                -1 = ficha Roja, 1 = ficha Amarilla, 0 = celda vacía.
+        # ── GUARDIA 2: estado ya terminal → devolver columna aleatoria ────────
+        # El test puede pasar tableros terminales; evitamos que root.children
+        # quede vacío y max() explote con "empty sequence".
+        if state.is_final():
+            return int(np.random.choice(free_cols))
 
-        Retorna
-        -------
-        int : columna elegida (0–6)
-        """
-        # ── Paso 1: Reconstruir el estado del juego ──────────────────────────
-        current_player = self._infer_player(board)
-        state = ConnectState(board, current_player)
+        # ── Chequeo táctico (ganar o bloquear antes de MCTS) ─────────────────
+        tactic = self._get_tactical_action(state, player)
+        if tactic is not None:
+            return tactic
 
-        # ── Paso 2: Verificar jugadas tácticas inmediatas ────────────────────
-        # Ganar o bloquear directamente sin necesidad de simulaciones.
-        # Esto ahorra presupuesto para situaciones estratégicas más complejas.
-        tactical_action = self._get_tactical_action(state, current_player)
-        if tactical_action is not None:
-            return tactical_action
-
-        # ── Paso 3: Ejecutar MCTS ────────────────────────────────────────────
+        # ── MCTS: construir árbol con N simulaciones ──────────────────────────
         root = MCTSNode(state)
 
         for _ in range(self.n_simulations):
-            # (a) SELECCIÓN: bajar por el árbol usando UCB hasta un nodo hoja
+            # (a) Selección: bajar con UCB hasta nodo no expandido
             node = self._select(root)
 
-            # (b) EXPANSIÓN: si no es terminal, agregar un hijo nuevo al árbol
+            # (b) Expansión: agregar hijo nuevo si no es terminal
             if not node.is_terminal:
                 node = self._expand(node)
 
-            # (c) SIMULACIÓN (rollout): jugar aleatoriamente hasta el final
+            # (c) Rollout: jugar aleatoriamente hasta el final
             result = self._rollout(node.state)
 
-            # (d) PROPAGACIÓN: actualizar N y W desde la hoja hasta la raíz
+            # (d) Propagación: subir resultado actualizando N y W
             self._backpropagate(node, result)
 
-        # ── Paso 4: Elegir la acción más robusta ─────────────────────────────
-        # Usamos la acción con MÁS VISITAS (no la mayor W/N).
-        # La estrategia de "más visitas" es más robusta ante el ruido estadístico.
-        best_action = max(root.children.keys(),
-                          key=lambda a: root.children[a].N)
-        return best_action
+        # ── GUARDIA 3: si por alguna razón no se crearon hijos → fallback ─────
+        # Esto no debería ocurrir si el estado no es terminal, pero protege
+        # contra cualquier condición inesperada del entorno de Gradescope.
+        if not root.children:
+            return int(np.random.choice(free_cols))
 
+        # ── Decisión: columna con más visitas (más robusta que mayor W/N) ─────
+        return max(root.children, key=lambda c: root.children[c].N)
 
-    def _select(self, node: MCTSNode) -> MCTSNode:
-        """
-        FASE 1 — SELECCIÓN (Slides 13, slide 26 línea 2)
+    # ── Fases MCTS ────────────────────────────────────────────────────────────
 
-        Baja por el árbol desde la raíz, eligiendo en cada nivel el hijo
-        con el mayor puntaje UCB, hasta encontrar un nodo que:
-          (a) todavía tenga acciones sin explorar (no está completamente expandido), o
-          (b) sea un nodo terminal (fin de partida).
-        """
+    def _select(self, node):
+        """Bajar por el árbol eligiendo siempre el hijo con mayor UCB."""
         while not node.is_terminal and node.is_fully_expanded:
-            node = self._best_ucb_child(node)
+            node = max(node.children.values(),
+                       key=lambda ch: ch.ucb_score(self.C))
         return node
 
-    def _best_ucb_child(self, node: MCTSNode) -> MCTSNode:
-        """
-        Elige el hijo con el puntaje UCB más alto.
-
-        UCB = W/N + C·√(ln(N_padre)/N_hijo)
-        (Fórmula textual de Slides 12, diapositiva 22)
-        """
-        return max(node.children.values(),
-                   key=lambda child: child.ucb_score(self.C))
-
-    def _expand(self, node: MCTSNode) -> MCTSNode:
-        """
-        FASE 2 — EXPANSIÓN (Slides 13, slide 26 línea 3)
-
-        Toma una acción no explorada, aplica la transición del juego
-        y agrega el nodo hijo resultante al árbol.
-        """
-        # Sacar una acción no probada de la lista (ya está mezclada)
-        action = node.untried_actions.pop()
-
-        # Aplicar la transición para obtener el nuevo estado
+    def _expand(self, node):
+        """Crear un nodo hijo para una acción no explorada."""
+        action    = node.untried_actions.pop()
         new_state = node.state.transition(action)
-
-        # Crear el nodo hijo y conectarlo al árbol
-        child = MCTSNode(new_state, parent=node, action=action)
+        child     = MCTSNode(new_state, parent=node, action=action)
         node.children[action] = child
-
         return child
 
-    def _rollout(self, state: ConnectState) -> int:
-        """
-        FASE 3 — SIMULACIÓN / ROLLOUT (Slides 13, slide 26 línea 4)
-
-        Juega la partida hasta el final usando una política aleatoria
-        (llamada "default policy" en las diapositivas).
-
-        Retorna el ganador: -1 (Rojo), 1 (Amarillo), 0 (empate).
-
-        Por qué funciona: aunque los rollouts son "basura" individualmente,
-        en promedio revelan qué acciones llevan a más victorias.
-        (Explicación formal: Slides 13, diapositivas 17-21)
-        """
-        # Trabajamos con una copia para no modificar el estado del nodo
+    def _rollout(self, state):
+        """Jugar aleatoriamente hasta el fin y retornar el ganador."""
         current = state
         while not current.is_final():
-            free_cols = current.get_free_cols()
-            action = int(np.random.choice(free_cols))
+            free    = current.get_free_cols()
+            action  = int(np.random.choice(free))
             current = current.transition(action)
         return current.get_winner()
 
-    def _backpropagate(self, node: MCTSNode, result: int) -> None:
-        """
-        FASE 4 — PROPAGACIÓN (Slides 13, slide 26 línea 6)
-
-        Sube desde el nodo expandido hasta la raíz, actualizando
-        las estadísticas N (visitas) y W (victorias) en cada nodo.
-
-        Lógica de W:
-          - Cada nodo almacena victorias del jugador que lo ELIGIÓ
-            (es decir, del jugador que estaba activo en el padre).
-          - Ese jugador es exactamente "-node.state.player"
-            (porque node.state.player es quien va a mover DESDE este nodo,
-             no quien llegó a él).
-        """
+    def _backpropagate(self, node, result):
+        """Subir actualizando N y W en cada nodo del camino."""
         while node is not None:
-            node.N += 1  # Una visita más a este nodo
-
-            # El "dueño" de este nodo es quien movió para llegar aquí
-            # = el jugador opuesto al que mueve desde este estado
-            mover = -node.state.player
-
-            if result == mover:
-                # El mover ganó → suma una victoria
+            node.N += 1
+            # -node.state.player = quien eligió este nodo (jugador del padre)
+            if result == -node.state.player:
                 node.W += 1
-            # Si hay empate (result == 0) o perdió: W no cambia
-            # Nota: no restamos en empate porque UCB usa W/N como estimación
-            # de probabilidad de victoria, y un empate no es una victoria.
+            node = node.parent
 
-            node = node.parent  # Subir al padre
-
+    # ── Auxiliares ────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _infer_player(board: np.ndarray) -> int:
-        """
-        Determina a quién le toca mover a partir del tablero.
-
-        Rojo (-1) siempre mueve primero. Si tiene el mismo número de fichas
-        que Amarillo, es turno de Rojo. Si tiene una más, es turno de Amarillo.
-        """
-        red_count    = int(np.sum(board == -1))
-        yellow_count = int(np.sum(board ==  1))
-        return -1 if red_count == yellow_count else 1
+    def _infer_player(board):
+        """Rojo (-1) mueve primero. Igualdad de fichas → turno de Rojo."""
+        return -1 if int(np.sum(board == -1)) == int(np.sum(board == 1)) else 1
 
     @staticmethod
-    def _get_tactical_action(state: ConnectState, player: int):
+    def _get_tactical_action(state, player):
         """
-        Chequeo táctico ANTES de MCTS para dos situaciones críticas:
-
-          1. ¿Puedo ganar ahora mismo? → Jugar inmediatamente.
-          2. ¿Mi oponente gana en su próximo turno? → Bloquear.
-
-        Esto garantiza que el agente no ignore victorias/bloqueos obvios
-        incluso con un presupuesto de simulaciones muy bajo.
-
-        Retorna la columna a jugar, o None si no hay jugada táctica urgente.
+        Prioridad 1: victoria inmediata.
+        Prioridad 2: bloqueo urgente.
+        Siempre verificar is_applicable antes de transition.
         """
         free_cols = state.get_free_cols()
+        opponent  = -player
 
-        # ── Prioridad 1: ¿Puedo ganar? ──────────────────────────────────────
+        # ¿Puedo ganar ya?
         for col in free_cols:
+            if not state.is_applicable(col):
+                continue
             next_state = state.transition(col)
             if next_state.get_winner() == player:
-                return col  # ¡Victoria inmediata!
+                return col
 
-        # ── Prioridad 2: ¿Debo bloquear? ────────────────────────────────────
-        opponent = -player
+        # ¿El oponente gana si no bloqueo?
         for col in free_cols:
-            # Simular que el oponente juega en esa columna
-            opponent_state = ConnectState(state.board, opponent)
-            if opponent_state.is_applicable(col):
-                next_state = opponent_state.transition(col)
-                if next_state.get_winner() == opponent:
-                    return col  # Bloquear amenaza inmediata
+            opp_state = ConnectState(state.board, opponent)
+            if not opp_state.is_applicable(col):
+                continue
+            next_state = opp_state.transition(col)
+            if next_state.get_winner() == opponent:
+                return col
 
-        return None  # Sin jugada táctica urgente → usar MCTS
+        return None
