@@ -27,7 +27,6 @@ sweep). The tournament harness always constructs with no args → depth=3.
 """
 
 import numpy as np
-from typing import override
 
 from connect4.policy import Policy
 
@@ -45,11 +44,9 @@ class JohnDoeV2(Policy):
     def __init__(self, depth: int = 3):
         self.depth = depth
 
-    @override
     def mount(self) -> None:
         pass
 
-    @override
     def act(self, s: np.ndarray) -> int:
         my_color = self._infer_color(s)
         legal = [c for c in range(COLS) if s[0, c] == 0]

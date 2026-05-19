@@ -13,7 +13,6 @@ This agent exists to (a) verify the harness wiring end-to-end and
 """
 
 import numpy as np
-from typing import override
 
 from connect4.policy import Policy
 
@@ -24,14 +23,12 @@ COLS = 7
 
 class JohnDoe(Policy):
 
-    @override
     def mount(self) -> None:
         # Nothing to set up — no model to load, no tables to build.
         # A fresh instance is constructed for every game by the tournament
         # harness, so per-game state would go here if we needed it.
         pass
 
-    @override
     def act(self, s: np.ndarray) -> int:
         my_color = self._infer_color(s)
         opp_color = -my_color
