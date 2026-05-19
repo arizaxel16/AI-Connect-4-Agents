@@ -16,7 +16,7 @@ API del torneo:
 """
 
 import numpy as np
-from policy import Policy
+from connect4.policy import Policy
 
 
 class GreedyAgent(Policy):
