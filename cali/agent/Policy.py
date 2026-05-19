@@ -1,32 +1,9 @@
-"""
-mcts_agent.py — Agente Connect-4 basado en Monte Carlo Tree Search (MCTS)
-==========================================================================
-Fundamento teórico (diapositivas de clase):
-  - Pseudocódigo MCTS        → Slides 13, diapositiva 26
-  - Fórmula UCB              → Slides 12, diapositiva 22
-  - Trial-Based Online PImp  → Slides 13, diapositivas 11-21
-  - Alternating Markov Game  → Slides 12, diapositivas 12-17
-
-Idea central:
-  En cada turno, el agente ejecuta N_SIMULATIONS simulaciones desde el
-  estado actual. Cada simulación recorre el árbol de búsqueda usando UCB
-  (para equilibrar exploración/explotación), expande un nodo nuevo,
-  juega aleatoriamente hasta el final (rollout) y propaga el resultado
-  hacia la raíz. La acción final es la columna con más visitas.
-
-Autor: [Tu nombre]
-"""
-
-# ── Dependencias ──────────────────────────────────────────────────────────────
 import math
 import numpy as np
-from tournament.connect4.policy import Policy
-from tournament.connect4.connect_state import ConnectState
+from connect4.policy import Policy
+from connect4.connect_state import ConnectState
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CLASE 1: MCTSNode — Un nodo dentro del árbol de búsqueda
-# ═══════════════════════════════════════════════════════════════════════════════
 
 class MCTSNode:
     """
@@ -102,10 +79,6 @@ class MCTSNode:
         exploration  = C * math.sqrt(math.log(self.parent.N) / self.N)
         return exploitation + exploration
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# CLASE 2: MCTSAgent — La política (agente) que usa MCTS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 class MCTSAgent(Policy):
     """
@@ -194,9 +167,6 @@ class MCTSAgent(Policy):
                           key=lambda a: root.children[a].N)
         return best_action
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # FASES DEL ALGORITMO MCTS
-    # ═══════════════════════════════════════════════════════════════════════════
 
     def _select(self, node: MCTSNode) -> MCTSNode:
         """
@@ -291,9 +261,6 @@ class MCTSAgent(Policy):
 
             node = node.parent  # Subir al padre
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # MÉTODOS AUXILIARES
-    # ═══════════════════════════════════════════════════════════════════════════
 
     @staticmethod
     def _infer_player(board: np.ndarray) -> int:
