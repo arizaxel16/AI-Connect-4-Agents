@@ -1,8 +1,8 @@
 """
-John Doe v2 — depth-3 minimax with terminal-only scoring.
+John Doe v2 — depth-N minimax with terminal-only scoring.
 
 Decision rule:
-    Run a minimax search of depth `self.depth` (default 3) over the game
+    Run a minimax search of depth `self.depth` (default 2) over the game
     tree. The only scoring function at leaves is:
         +1  if the current board contains 4-in-a-row for me
         -1  if it contains 4-in-a-row for the opponent
@@ -10,20 +10,19 @@ Decision rule:
     Pick the move whose worst-case (opponent-best-play) outcome is highest.
     Break ties uniformly at random.
 
-What depth 3 gains over the v1 1-step agent:
-    1. Never plays a "suicide" move — any move that allows the opponent to
-       win on their immediate reply gets a -1 score and is rejected unless
-       *every* move is a loss.
-    2. Sees and plays 1-move forks: if I have a move that produces two
-       distinct winning threats, the opponent can only block one of them,
-       so my reply on ply 3 wins → +1.
+What depth 2 gains over the v1 1-step agent:
+    Never plays a "suicide" move — any move that allows the opponent to
+    win on their immediate reply gets a -1 score and is rejected unless
+    *every* move is a loss.
 
-What depth 3 cannot guarantee:
-    Forks created by the opponent that materialise on ply 4 of the search
-    (i.e. opponent fork setup after my move). Those need depth >= 5.
+What deeper search (depth >= 3) would add:
+    1-move forks: a move that creates two distinct winning threats so the
+    opponent can only block one. Depth 5+ would also see opponent-fork
+    setups after my move. Default is 2 because gradescope's per-action
+    timeout is tight and this implementation has no alpha-beta pruning.
 
-The `depth` parameter is configurable for later analysis (depth-vs-winrate
-sweep). The tournament harness always constructs with no args → depth=3.
+The `depth` parameter is configurable for the local depth-vs-winrate
+sweep. The tournament harness constructs with no args → depth=2.
 """
 
 import numpy as np
@@ -41,10 +40,13 @@ NEG_INF, POS_INF = -2, 2
 
 class JohnDoeV2(Policy):
 
-    def __init__(self, depth: int = 3):
+    def __init__(self, depth: int = 2):
         self.depth = depth
 
-    def mount(self) -> None:
+    def mount(self, timeout: float | None = None) -> None:
+        # `timeout` is accepted because gradescope's harness passes a
+        # per-action timeout positionally. We don't use it — depth is the
+        # only knob for runtime here.
         pass
 
     def act(self, s: np.ndarray) -> int:

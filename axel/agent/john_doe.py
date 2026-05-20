@@ -23,10 +23,13 @@ COLS = 7
 
 class JohnDoe(Policy):
 
-    def mount(self) -> None:
+    def mount(self, timeout: float | None = None) -> None:
         # Nothing to set up — no model to load, no tables to build.
         # A fresh instance is constructed for every game by the tournament
         # harness, so per-game state would go here if we needed it.
+        # `timeout` is accepted because gradescope's harness passes a
+        # per-action timeout positionally; we don't use it (every `act`
+        # call returns in microseconds).
         pass
 
     def act(self, s: np.ndarray) -> int:
